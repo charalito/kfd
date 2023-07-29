@@ -5,7 +5,6 @@
 //  Created by Seo Hyun-gyu on 2023/07/25.
 //
 
-//#include "fun.h"
 #include "krw.h"
 #include "offsets.h"
 #include <sys/stat.h>
@@ -17,243 +16,56 @@
 #include <sys/snapshot.h>
 #include <sys/mman.h>
 #include <mach/mach.h>
+#include "proc.h"
+#include "vnode.h"
+#include "grant_full_disk_access.h"
+#include "thanks_opa334dev_htrowii.h"
 
-
-uint64_t getProc(uint64_t kfd, pid_t pid) {
-    uint64_t proc = get_kernproc(kfd);
+int funUcred(uint64_t proc) {
+    uint64_t proc_ro = kread64(proc + off_p_proc_ro);
+    uint64_t ucreds = kread64(proc_ro + off_p_ro_p_ucred);
     
-    while (true) {
-        if(kread32(kfd, proc + off_p_pid) == pid) {
-            return proc;
-        }
-        proc = kread64(kfd, proc + off_p_list_le_prev);
-    }
-    
-    return 0;
-}
-
-uint64_t getProcByName(uint64_t kfd, char* nm) {
-    uint64_t proc = get_kernproc(kfd);
-    
-    while (true) {
-        uint64_t nameptr = proc + off_p_name;
-        char name[32];
-        do_kread(kfd, nameptr, &name, 32);
-//        printf("[i] pid: %d, process name: %s\n", kread32(kfd, proc + off_p_pid), name);
-        if(strcmp(name, nm) == 0) {
-            return proc;
-        }
-        proc = kread64(kfd, proc + off_p_list_le_prev);
-    }
-    
-    return 0;
-}
-
-int getPidByName(uint64_t kfd, char* nm) {
-    return kread32(kfd, getProcByName(kfd, nm) + off_p_pid);
-}
-
-int funProc(uint64_t kfd, uint64_t proc) {
-    int p_ppid = kread32(kfd, proc + off_p_ppid);
-    printf("[i] self proc->p_ppid: %d\n", p_ppid);
-    printf("[i] Patching proc->p_ppid %d -> 1 (for testing kwrite32, getppid)\n", p_ppid);
-    kwrite32(kfd, proc + off_p_ppid, 0x1);
-    printf("[+] Patched getppid(): %u\n", getppid());
-    kwrite32(kfd, proc + off_p_ppid, p_ppid);
-    printf("[+] Restored getppid(): %u\n", getppid());
-
-    int p_original_ppid = kread32(kfd, proc + off_p_original_ppid);
-    printf("[i] self proc->p_original_ppid: %d\n", p_original_ppid);
-    
-    int p_pgrpid = kread32(kfd, proc + off_p_pgrpid);
-    printf("[i] self proc->p_pgrpid: %d\n", p_pgrpid);
-    
-    int p_uid = kread32(kfd, proc + off_p_uid);
-    printf("[i] self proc->p_uid: %d\n", p_uid);
-    
-    int p_gid = kread32(kfd, proc + off_p_gid);
-    printf("[i] self proc->p_gid: %d\n", p_gid);
-    
-    int p_ruid = kread32(kfd, proc + off_p_ruid);
-    printf("[i] self proc->p_ruid: %d\n", p_ruid);
-    
-    int p_rgid = kread32(kfd, proc + off_p_rgid);
-    printf("[i] self proc->p_rgid: %d\n", p_rgid);
-    
-    int p_svuid = kread32(kfd, proc + off_p_svuid);
-    printf("[i] self proc->p_svuid: %d\n", p_svuid);
-    
-    int p_svgid = kread32(kfd, proc + off_p_svgid);
-    printf("[i] self proc->p_svgid: %d\n", p_svgid);
-    
-    int p_sessionid = kread32(kfd, proc + off_p_sessionid);
-    printf("[i] self proc->p_sessionid: %d\n", p_sessionid);
-    
-    uint64_t p_puniqueid = kread64(kfd, proc + off_p_puniqueid);
-    printf("[i] self proc->p_puniqueid: 0x%llx\n", p_puniqueid);
-    
-    printf("[i] Patching proc->p_puniqueid 0x%llx -> 0x4142434445464748 (for testing kwrite64)\n", p_puniqueid);
-    kwrite64(kfd, proc + off_p_puniqueid, 0x4142434445464748);
-    printf("[+] Patched self proc->p_puniqueid: 0x%llx\n", kread64(kfd, proc + off_p_puniqueid));
-    kwrite64(kfd, proc + off_p_puniqueid, p_puniqueid);
-    printf("[+] Restored self proc->p_puniqueid: 0x%llx\n", kread64(kfd, proc + off_p_puniqueid));
-    
-    return 0;
-}
-
-int funUcred(uint64_t kfd, uint64_t proc) {
-    uint64_t proc_ro = kread64(kfd, proc + off_p_proc_ro);
-    uint64_t ucreds = kread64(kfd, proc_ro + off_p_ro_p_ucred);
-    
-    uint64_t cr_label_pac = kread64(kfd, ucreds + off_u_cr_label);
+    uint64_t cr_label_pac = kread64(ucreds + off_u_cr_label);
     uint64_t cr_label = cr_label_pac | 0xffffff8000000000;
     printf("[i] self ucred->cr_label: 0x%llx\n", cr_label);
 //
-//    printf("[i] self ucred->cr_label+0x8+0x0: 0x%llx\n", kread64(kfd, kread64(kfd, cr_label+0x8)));
-//    printf("[i] self ucred->cr_label+0x8+0x0+0x0: 0x%llx\n", kread64(kfd, kread64(kfd, kread64(kfd, cr_label+0x8))));
-//    printf("[i] self ucred->cr_label+0x10: 0x%llx\n", kread64(kfd, cr_label+0x10));
-//    uint64_t OSEntitlements = kread64(kfd, cr_label+0x10);
+//    printf("[i] self ucred->cr_label+0x8+0x0: 0x%llx\n", kread64(kread64(cr_label+0x8)));
+//    printf("[i] self ucred->cr_label+0x8+0x0+0x0: 0x%llx\n", kread64(kread64(kread64(cr_label+0x8))));
+//    printf("[i] self ucred->cr_label+0x10: 0x%llx\n", kread64(cr_label+0x10));
+//    uint64_t OSEntitlements = kread64(cr_label+0x10);
 //    printf("OSEntitlements: 0x%llx\n", OSEntitlements);
 //    uint64_t CEQueryContext = OSEntitlements + 0x28;
-//    uint64_t der_start = kread64(kfd, CEQueryContext + 0x20);
-//    uint64_t der_end = kread64(kfd, CEQueryContext + 0x28);
+//    uint64_t der_start = kread64(CEQueryContext + 0x20);
+//    uint64_t der_end = kread64(CEQueryContext + 0x28);
 //    for(int i = 0; i < 100; i++) {
-//        printf("OSEntitlements+0x%x: 0x%llx\n", i*8, kread64(kfd, OSEntitlements + i * 8));
+//        printf("OSEntitlements+0x%x: 0x%llx\n", i*8, kread64(OSEntitlements + i * 8));
 //    }
-//    kwrite64(kfd, kread64(kfd, OSEntitlements), 0);
-//    kwrite64(kfd, kread64(kfd, OSEntitlements + 8), 0);
-//    kwrite64(kfd, kread64(kfd, OSEntitlements + 0x10), 0);
-//    kwrite64(kfd, kread64(kfd, OSEntitlements + 0x20), 0);
+//    kwrite64(kread64(OSEntitlements), 0);
+//    kwrite64(kread64(OSEntitlements + 8), 0);
+//    kwrite64(kread64(OSEntitlements + 0x10), 0);
+//    kwrite64(kread64(OSEntitlements + 0x20), 0);
     
     uint64_t cr_posix_p = ucreds + off_u_cr_posix;
-    printf("[i] self ucred->posix_cred->cr_uid: %u\n", kread32(kfd, cr_posix_p + off_cr_uid));
-    printf("[i] self ucred->posix_cred->cr_ruid: %u\n", kread32(kfd, cr_posix_p + off_cr_ruid));
-    printf("[i] self ucred->posix_cred->cr_svuid: %u\n", kread32(kfd, cr_posix_p + off_cr_svuid));
-    printf("[i] self ucred->posix_cred->cr_ngroups: %u\n", kread32(kfd, cr_posix_p + off_cr_ngroups));
-    printf("[i] self ucred->posix_cred->cr_groups: %u\n", kread32(kfd, cr_posix_p + off_cr_groups));
-    printf("[i] self ucred->posix_cred->cr_rgid: %u\n", kread32(kfd, cr_posix_p + off_cr_rgid));
-    printf("[i] self ucred->posix_cred->cr_svgid: %u\n", kread32(kfd, cr_posix_p + off_cr_svgid));
-    printf("[i] self ucred->posix_cred->cr_gmuid: %u\n", kread32(kfd, cr_posix_p + off_cr_gmuid));
-    printf("[i] self ucred->posix_cred->cr_flags: %u\n", kread32(kfd, cr_posix_p + off_cr_flags));
+    printf("[i] self ucred->posix_cred->cr_uid: %u\n", kread32(cr_posix_p + off_cr_uid));
+    printf("[i] self ucred->posix_cred->cr_ruid: %u\n", kread32(cr_posix_p + off_cr_ruid));
+    printf("[i] self ucred->posix_cred->cr_svuid: %u\n", kread32(cr_posix_p + off_cr_svuid));
+    printf("[i] self ucred->posix_cred->cr_ngroups: %u\n", kread32(cr_posix_p + off_cr_ngroups));
+    printf("[i] self ucred->posix_cred->cr_groups: %u\n", kread32(cr_posix_p + off_cr_groups));
+    printf("[i] self ucred->posix_cred->cr_rgid: %u\n", kread32(cr_posix_p + off_cr_rgid));
+    printf("[i] self ucred->posix_cred->cr_svgid: %u\n", kread32(cr_posix_p + off_cr_svgid));
+    printf("[i] self ucred->posix_cred->cr_gmuid: %u\n", kread32(cr_posix_p + off_cr_gmuid));
+    printf("[i] self ucred->posix_cred->cr_flags: %u\n", kread32(cr_posix_p + off_cr_flags));
 
     return 0;
 }
 
-uint64_t getVnodeAtPath(uint64_t kfd, char* filename) {
-    int file_index = open(filename, O_RDONLY);
-    if (file_index == -1) return -1;
-    
-    uint64_t proc = getProc(kfd, getpid());
 
-    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
-    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
-    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
-    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
-    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
-    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
-    uint64_t vnode = vnode_pac | 0xffffff8000000000;
+int funCSFlags(char* process) {
+    uint64_t pid = getPidByName(process);
+    uint64_t proc = getProc(pid);
     
-    printf("[i] %s vnode: 0x%llx\n", filename, vnode);
-    close(file_index);
-    
-    return vnode;
-}
-
-uint64_t funVnodeHide(uint64_t kfd, char* filename) {
-    uint64_t vnode = getVnodeAtPath(kfd, filename);
-    if(vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", filename);
-        return -1;
-    }
-    
-    //vnode_ref, vnode_get
-    uint32_t usecount = kread32(kfd, vnode + off_vnode_v_usecount);
-    uint32_t iocount = kread32(kfd, vnode + off_vnode_v_iocount);
-    printf("[i] vnode->usecount: %d, vnode->iocount: %d\n", usecount, iocount);
-    kwrite32(kfd, vnode + off_vnode_v_usecount, usecount + 1);
-    kwrite32(kfd, vnode + off_vnode_v_iocount, iocount + 1);
-    
-#define VISSHADOW 0x008000
-    //hide file
-    uint32_t v_flags = kread32(kfd, vnode + off_vnode_v_flag);
-    printf("[i] vnode->v_flags: 0x%x\n", v_flags);
-    kwrite32(kfd, vnode + off_vnode_v_flag, (v_flags | VISSHADOW));
-
-    //exist test (should not be exist
-    printf("[i] %s access ret: %d\n", filename, access(filename, F_OK));
-    
-    //show file
-    v_flags = kread32(kfd, vnode + off_vnode_v_flag);
-    kwrite32(kfd, vnode + off_vnode_v_flag, (v_flags &= ~VISSHADOW));
-    
-    printf("[i] %s access ret: %d\n", filename, access(filename, F_OK));
-    
-    //restore vnode iocount, usecount
-    usecount = kread32(kfd, vnode + off_vnode_v_usecount);
-    iocount = kread32(kfd, vnode + off_vnode_v_iocount);
-    if(usecount > 0)
-        kwrite32(kfd, vnode + off_vnode_v_usecount, usecount - 1);
-    if(iocount > 0)
-        kwrite32(kfd, vnode + off_vnode_v_iocount, iocount - 1);
-
-    return 0;
-}
-
-uint64_t funVnodeChown(uint64_t kfd, char* filename, uid_t uid, gid_t gid) {
-
-    uint64_t vnode = getVnodeAtPath(kfd, filename);
-    if(vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", filename);
-        return -1;
-    }
-    
-    uint64_t v_data = kread64(kfd, vnode + off_vnode_v_data);
-    uint32_t v_uid = kread32(kfd, v_data + 0x80);
-    uint32_t v_gid = kread32(kfd, v_data + 0x84);
-    
-    //vnode->v_data->uid
-    printf("[i] Patching %s vnode->v_uid %d -> %d\n", filename, v_uid, uid);
-    kwrite32(kfd, v_data+0x80, uid);
-    //vnode->v_data->gid
-    printf("[i] Patching %s vnode->v_gid %d -> %d\n", filename, v_gid, gid);
-    kwrite32(kfd, v_data+0x84, gid);
-    
-    struct stat file_stat;
-    if(stat(filename, &file_stat) == 0) {
-        printf("[i] %s UID: %d\n", filename, file_stat.st_uid);
-        printf("[i] %s GID: %d\n", filename, file_stat.st_gid);
-    }
-    
-    return 0;
-}
-
-uint64_t funVnodeChmod(uint64_t kfd, char* filename, mode_t mode) {
-    uint64_t vnode = getVnodeAtPath(kfd, filename);
-    if(vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", filename);
-        return -1;
-    }
-    
-    uint64_t v_data = kread64(kfd, vnode + off_vnode_v_data);
-    uint32_t v_mode = kread32(kfd, v_data + 0x88);
-    
-    printf("[i] Patching %s vnode->v_mode %o -> %o\n", filename, v_mode, mode);
-    kwrite32(kfd, v_data+0x88, mode);
-    
-    struct stat file_stat;
-    if(stat(filename, &file_stat) == 0) {
-        printf("[i] %s mode: %o\n", filename, file_stat.st_mode);
-    }
-    
-    return 0;
-}
-
-int funCSFlags(uint64_t kfd, char* process) {
-    uint64_t pid = getPidByName(kfd, process);
-    uint64_t proc = getProc(kfd, pid);
-    
-    uint64_t proc_ro = kread64(kfd, proc + off_p_proc_ro);
-    uint32_t csflags = kread32(kfd, proc_ro + off_p_ro_p_csflags);
+    uint64_t proc_ro = kread64(proc + off_p_proc_ro);
+    uint32_t csflags = kread32(proc_ro + off_p_ro_p_csflags);
     printf("[i] %s proc->proc_ro->p_csflags: 0x%x\n", process, csflags);
     
 #define TF_PLATFORM 0x400
@@ -271,25 +83,25 @@ int funCSFlags(uint64_t kfd, char* process) {
     
 //    csflags = (csflags | CS_PLATFORM_BINARY | CS_INSTALLER | CS_GET_TASK_ALLOW | CS_DEBUGGED) & ~(CS_RESTRICT | CS_HARD | CS_KILL);
 //    sleep(3);
-//    kwrite32(kfd, proc_ro + off_p_ro_p_csflags, csflags);
+//    kwrite32(proc_ro + off_p_ro_p_csflags, csflags);
     
     return 0;
 }
 
-int funTask(uint64_t kfd, char* process) {
-    uint64_t pid = getPidByName(kfd, process);
-    uint64_t proc = getProc(kfd, pid);
+int funTask(char* process) {
+    uint64_t pid = getPidByName(process);
+    uint64_t proc = getProc(pid);
     printf("[i] %s proc: 0x%llx\n", process, proc);
-    uint64_t proc_ro = kread64(kfd, proc + off_p_proc_ro);
+    uint64_t proc_ro = kread64(proc + off_p_proc_ro);
     
-    uint64_t pr_proc = kread64(kfd, proc_ro + off_p_ro_pr_proc);
+    uint64_t pr_proc = kread64(proc_ro + off_p_ro_pr_proc);
     printf("[i] %s proc->proc_ro->pr_proc: 0x%llx\n", process, pr_proc);
     
-    uint64_t pr_task = kread64(kfd, proc_ro + off_p_ro_pr_task);
+    uint64_t pr_task = kread64(proc_ro + off_p_ro_pr_task);
     printf("[i] %s proc->proc_ro->pr_task: 0x%llx\n", process, pr_task);
     
     //proc_is64bit_data+0x18: LDR             W8, [X8,#0x3D0]
-    uint32_t t_flags = kread32(kfd, pr_task + off_task_t_flags);
+    uint32_t t_flags = kread32(pr_task + off_task_t_flags);
     printf("[i] %s task->t_flags: 0x%x\n", process, t_flags);
     
     
@@ -301,154 +113,28 @@ int funTask(uint64_t kfd, char* process) {
     #define TFRO_PAC_EXC_FATAL              0x00010000                      /* task is marked a corpse if a PAC exception occurs */
     #define TFRO_PAC_ENFORCE_USER_STATE     0x01000000                      /* Enforce user and kernel signed thread state */
     
-    uint32_t t_flags_ro = kread64(kfd, proc_ro + off_p_ro_t_flags_ro);
+    uint32_t t_flags_ro = kread64(proc_ro + off_p_ro_t_flags_ro);
     printf("[i] %s proc->proc_ro->t_flags_ro: 0x%x\n", process, t_flags_ro);
     
     return 0;
 }
 
-uint64_t findRootVnode(uint64_t kfd) {
-    uint64_t launchd_proc = getProc(kfd, 1);
+uint64_t fun_ipc_entry_lookup(mach_port_name_t port_name) {
+    uint64_t proc = getProc(getpid());
+    uint64_t proc_ro = kread64(proc + off_p_proc_ro);
     
-    uint64_t textvp_pac = kread64(kfd, launchd_proc + off_p_textvp);
-    uint64_t textvp = textvp_pac | 0xffffff8000000000;
-    printf("[i] launchd proc->textvp: 0x%llx\n", textvp);
-
-    uint64_t textvp_nameptr = kread64(kfd, textvp + off_vnode_v_name);
-    uint64_t textvp_name = kread64(kfd, textvp_nameptr);
-    uint64_t devvp = kread64(kfd, (kread64(kfd, textvp + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
-    uint64_t nameptr = kread64(kfd, devvp + off_vnode_v_name);
-    uint64_t name = kread64(kfd, nameptr);
-    char* devName = &name;
-    printf("[i] launchd proc->textvp->v_name: %s, v_mount->mnt_devvp->v_name: %s\n", &textvp_name, devName);
-    
-    uint64_t sbin_vnode = kread64(kfd, textvp + off_vnode_v_parent) | 0xffffff8000000000;
-    textvp_nameptr = kread64(kfd, sbin_vnode + off_vnode_v_name);
-    textvp_name = kread64(kfd, textvp_nameptr);
-    devvp = kread64(kfd, (kread64(kfd, textvp + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
-    nameptr = kread64(kfd, devvp + off_vnode_v_name);
-    name = kread64(kfd, nameptr);
-    devName = &name;
-    printf("[i] launchd proc->textvp->v_parent->v_name: %s, v_mount->mnt_devvp->v_name:%s\n", &textvp_name, devName);
-    
-    uint64_t root_vnode = kread64(kfd, sbin_vnode + off_vnode_v_parent) | 0xffffff8000000000;
-    textvp_nameptr = kread64(kfd, root_vnode + off_vnode_v_name);
-    textvp_name = kread64(kfd, textvp_nameptr);
-    devvp = kread64(kfd, (kread64(kfd, root_vnode + off_vnode_v_mount) | 0xffffff8000000000) + off_mount_mnt_devvp);
-    nameptr = kread64(kfd, devvp + off_vnode_v_name);
-    name = kread64(kfd, nameptr);
-    devName = &name;
-    printf("[i] launchd proc->textvp->v_parent->v_parent->v_name: %s, v_mount->mnt_devvp->v_name:%s\n", &textvp_name, devName);
-    printf("[+] rootvnode: 0x%llx\n", root_vnode);
-    
-    return root_vnode;
-}
-
-uint64_t funVnodeRedirectFolder(uint64_t kfd, char* to, char* from) {
-    uint64_t to_vnode = getVnodeAtPath(kfd, to);
-    if(to_vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", to);
-        return -1;
-    }
-    
-    uint8_t to_v_references = kread8(kfd, to_vnode + off_vnode_v_references);
-    uint32_t to_usecount = kread32(kfd, to_vnode + off_vnode_v_usecount);
-    uint32_t to_v_kusecount = kread32(kfd, to_vnode + off_vnode_v_kusecount);
-    
-    uint64_t from_vnode = getVnodeAtPath(kfd, from);
-    if(from_vnode == -1) {
-        printf("[-] Unable to get vnode, filename: %s", from);
-        return -1;
-    }
-    
-    uint64_t from_v_data = kread64(kfd, from_vnode+ off_vnode_v_data);
-    
-    kwrite32(kfd, to_vnode + off_vnode_v_usecount, to_usecount + 1);
-    kwrite32(kfd, to_vnode + off_vnode_v_kusecount, to_v_kusecount + 1);
-    kwrite8(kfd, to_vnode + off_vnode_v_references, to_v_references + 1);
-    kwrite64(kfd, to_vnode + off_vnode_v_data, from_v_data);
-    
-    return 0;
-}
-
-uint64_t funVnodeOverwriteFile(uint64_t kfd, char* to) {
-
-    int file_index = open(to, O_RDONLY);
-
-    if (file_index == -1) return -1;
-    
-    uint64_t proc = getProc(kfd, getpid());
-    
-    //get vnode
-    uint64_t filedesc_pac = kread64(kfd, proc + off_p_pfd);
-    uint64_t filedesc = filedesc_pac | 0xffffff8000000000;
-    uint64_t openedfile = kread64(kfd, filedesc + (8 * file_index));
-    uint64_t fileglob_pac = kread64(kfd, openedfile + off_fp_fglob);
-    uint64_t fileglob = fileglob_pac | 0xffffff8000000000;
-    uint64_t vnode_pac = kread64(kfd, fileglob + off_fg_data);
-    uint64_t to_vnode = vnode_pac | 0xffffff8000000000;
-    printf("[i] %s to_vnode: 0x%llx\n", to, to_vnode);
-    
-    uint64_t to_v_mount_pac = kread64(kfd, findRootVnode(kfd) + off_vnode_v_mount);
-    uint64_t to_v_mount = to_v_mount_pac | 0xffffff8000000000;
-    
-    uint32_t to_m_flag = kread32(kfd, to_v_mount + off_mount_mnt_flag);
-    
-#define MNT_RDONLY      0x00000001      /* read only filesystem */
-    kwrite32(kfd, to_v_mount + off_mount_mnt_flag, to_m_flag & ~MNT_RDONLY);
-    
-    kwrite32(kfd, fileglob + off_fg_flag, O_ACCMODE);
-    
-    printf("[i] %s to_vnode->v_writecount: %d\n", to, kread32(kfd, to_vnode + off_vnode_v_writecount));
-    kwrite32(kfd, to_vnode + off_vnode_v_writecount, kread32(kfd, to_vnode + off_vnode_v_writecount)+1);
-    
-    const char* data = "AAAAAAAAAAAAAAAAAAAAAAA";
-    
-    size_t data_len = strlen(data);
-
-    off_t file_size = lseek(file_index, 0, SEEK_END);
-    if (file_size == -1) {
-        perror("Failed lseek.");
-//        close(file);
-//        return;
-    }
-    
-    char* mapped = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, file_index, 0);
-    if (mapped == MAP_FAILED) {
-        perror("Failed mmap.");
-//        close(file);
-//        return;
-    }
-    
-    memcpy(mapped, data, data_len);
-    
-    munmap(mapped, file_size);
-    
-    
-    kwrite32(kfd, to_v_mount + off_mount_mnt_flag, to_m_flag);
-    
-    close(file_index);
-
-    return 0;
-}
-
-
-uint64_t fun_ipc_entry_lookup(uint64_t kfd, mach_port_name_t port_name) {
-    uint64_t proc = getProc(kfd, getpid());
-    uint64_t proc_ro = kread64(kfd, proc + off_p_proc_ro);
-    
-    uint64_t pr_proc = kread64(kfd, proc_ro + off_p_ro_pr_proc);
+    uint64_t pr_proc = kread64(proc_ro + off_p_ro_pr_proc);
     printf("[i] self proc->proc_ro->pr_proc: 0x%llx\n", pr_proc);
     
-    uint64_t pr_task = kread64(kfd, proc_ro + off_p_ro_pr_task);
+    uint64_t pr_task = kread64(proc_ro + off_p_ro_pr_task);
     printf("[i] self proc->proc_ro->pr_task: 0x%llx\n", pr_task);
     
-    uint64_t itk_space_pac = kread64(kfd, pr_task + 0x300);
+    uint64_t itk_space_pac = kread64(pr_task + 0x300);
     uint64_t itk_space = itk_space_pac | 0xffffff8000000000;
     printf("[i] self task->itk_space: 0x%llx\n", itk_space);
     //NEED TO FIGURE OUT SMR POINTER!!!
     
-//    uint32_t table_size = kread32(kfd, itk_space + 0x14);
+//    uint32_t table_size = kread32(itk_space + 0x14);
 //    printf("[i] self task->itk_space table_size: 0x%x\n", table_size);
 //    uint32_t port_index = MACH_PORT_INDEX(port_name);
 //    if (port_index >= table_size) {
@@ -456,16 +142,16 @@ uint64_t fun_ipc_entry_lookup(uint64_t kfd, mach_port_name_t port_name) {
 //        return -1;
 //    }
 //
-//    uint64_t is_table_pac = kread64(kfd, itk_space + 0x20);
+//    uint64_t is_table_pac = kread64(itk_space + 0x20);
 //    uint64_t is_table = is_table_pac | 0xffffff8000000000;
 //    printf("[i] self task->itk_space->is_table: 0x%llx\n", is_table);
-//    printf("[i] self task->itk_space->is_table read: 0x%llx\n", kread64(kfd, is_table));
+//    printf("[i] self task->itk_space->is_table read: 0x%llx\n", kread64(is_table));
 //
 //    const int sizeof_ipc_entry_t = 0x18;
 //    uint64_t ipc_entry = is_table + sizeof_ipc_entry_t * port_index;
 //    printf("[i] self task->itk_space->is_table->ipc_entry: 0x%llx\n", ipc_entry);
 //
-//    uint64_t ie_object = kread64(kfd, ipc_entry + 0x0);
+//    uint64_t ie_object = kread64(ipc_entry + 0x0);
 //    printf("[i] self task->itk_space->is_table->ipc_entry->ie_object: 0x%llx\n", ie_object);
 //
 //    sleep(1);
@@ -474,322 +160,131 @@ uint64_t fun_ipc_entry_lookup(uint64_t kfd, mach_port_name_t port_name) {
     
     return 0;
 }
-uint64_t kread_ptr(uint64_t kfd, uint64_t kaddr) {
-    uint64_t ptr = kread64(kfd, kaddr);
-    if ((ptr >> 55) & 1) {
-        return ptr | 0xFFFFFF8000000000;
-    }
 
-    return ptr;
-}
-void kreadbuf(uint64_t kfd, uint64_t kaddr, void* output, size_t size)
-{
-    uint64_t endAddr = kaddr + size;
-    uint32_t outputOffset = 0;
-    unsigned char* outputBytes = (unsigned char*)output;
+int do_fun(void) {
     
-    for(uint64_t curAddr = kaddr; curAddr < endAddr; curAddr += 4)
-    {
-        uint32_t k = kread32(kfd, curAddr);
-
-        unsigned char* kb = (unsigned char*)&k;
-        for(int i = 0; i < 4; i++)
-        {
-            if(outputOffset == size) break;
-            outputBytes[outputOffset] = kb[i];
-            outputOffset++;
-        }
-        if(outputOffset == size) break;
-    }
-}
-
-uint64_t vm_map_get_header(uint64_t vm_map_ptr)
-{
-    return vm_map_ptr + 0x10;
-}
-
-uint64_t vm_map_header_get_first_entry(uint64_t kfd, uint64_t vm_header_ptr)
-{
-    return kread_ptr(kfd, vm_header_ptr + 0x8);
-}
-
-uint64_t vm_map_entry_get_next_entry(uint64_t kfd, uint64_t vm_entry_ptr)
-{
-    return kread_ptr(kfd, vm_entry_ptr + 0x8);
-}
-
-
-uint32_t vm_header_get_nentries(uint64_t kfd, uint64_t vm_header_ptr)
-{
-    return kread32(kfd, vm_header_ptr + 0x20);
-}
-
-void vm_entry_get_range(uint64_t kfd, uint64_t vm_entry_ptr, uint64_t *start_address_out, uint64_t *end_address_out)
-{
-    uint64_t range[2];
-    kreadbuf(kfd, vm_entry_ptr + 0x10, &range[0], sizeof(range));
-    if (start_address_out) *start_address_out = range[0];
-    if (end_address_out) *end_address_out = range[1];
-}
-
-
-//void vm_map_iterate_entries(uint64_t kfd, uint64_t vm_map_ptr, void (^itBlock)(uint64_t start, uint64_t end, uint64_t entry, BOOL *stop))
-void vm_map_iterate_entries(uint64_t kfd, uint64_t vm_map_ptr, void (^itBlock)(uint64_t start, uint64_t end, uint64_t entry, BOOL *stop))
-{
-    uint64_t header = vm_map_get_header(vm_map_ptr);
-    uint64_t entry = vm_map_header_get_first_entry(kfd, header);
-    uint64_t numEntries = vm_header_get_nentries(kfd, header);
-
-    while (entry != 0 && numEntries > 0) {
-        uint64_t start = 0, end = 0;
-        vm_entry_get_range(kfd, entry, &start, &end);
-
-        BOOL stop = NO;
-        itBlock(start, end, entry, &stop);
-        if (stop) break;
-
-        entry = vm_map_entry_get_next_entry(kfd, entry);
-        numEntries--;
-    }
-}
-
-uint64_t vm_map_find_entry(uint64_t kfd, uint64_t vm_map_ptr, uint64_t address)
-{
-    __block uint64_t found_entry = 0;
-        vm_map_iterate_entries(kfd, vm_map_ptr, ^(uint64_t start, uint64_t end, uint64_t entry, BOOL *stop) {
-            if (address >= start && address < end) {
-                found_entry = entry;
-                *stop = YES;
-            }
-        });
-        return found_entry;
-}
-#define FLAGS_PROT_SHIFT    7
-#define FLAGS_MAXPROT_SHIFT 11
-#define FLAGS_PROT_MASK    0x780
-#define FLAGS_MAXPROT_MASK 0x7800
-uint64_t getTask(uint64_t kfd, char* process) {
-    uint64_t proc = getProc(kfd, getpid());
-    uint64_t proc_ro = kread64(kfd, proc + 0x18);
-    uint64_t pr_task = kread64(kfd, proc_ro + 0x8);
-    printf("[i] self proc->proc_ro->pr_task: 0x%llx\n", pr_task);
-    return pr_task;
-}
-void vm_map_entry_set_prot(uint64_t kfd, uint64_t entry_ptr, vm_prot_t prot, vm_prot_t max_prot)
-{
-    uint64_t flags = kread64(kfd, entry_ptr + 0x48);
-    uint64_t new_flags = flags;
-    new_flags = (new_flags & ~FLAGS_PROT_MASK) | ((uint64_t)prot << FLAGS_PROT_SHIFT);
-    new_flags = (new_flags & ~FLAGS_MAXPROT_MASK) | ((uint64_t)max_prot << FLAGS_MAXPROT_SHIFT);
-    if (new_flags != flags) {
-        kwrite64(kfd, entry_ptr + 0x48, new_flags);
-    }
-}
-
-uint64_t start = 0, end = 0;
-
-uint64_t task_get_vm_map(uint64_t kfd, uint64_t task_ptr)
-{
-    return kread_ptr(kfd, task_ptr + 0x28);
-}
-#pragma mark overwrite2
-uint64_t funVnodeOverwrite2(uint64_t kfd, char* tofile, char* fromfile) {
-    printf("attempting opa's method\n");
-    int to_file_index = open(tofile, O_RDONLY);
-    if (to_file_index == -1) return -1;
-    off_t to_file_size = lseek(to_file_index, 0, SEEK_END);
-
-    int from_file_index = open(fromfile, O_RDONLY);
-    if (from_file_index == -1) return -1;
-    off_t from_file_size = lseek(from_file_index, 0, SEEK_END);
-
-    if(to_file_size < from_file_size) {
-        close(from_file_index);
-        close(to_file_index);
-        printf("[-] File is too big to overwrite!\n");
-        return -1;
-    }
-
-    //mmap as read only
-    printf("mmap as readonly\n");
-
-    char* from_mapped = mmap(NULL, from_file_size, PROT_READ, MAP_PRIVATE, from_file_index, 0);
-    if (from_mapped == MAP_FAILED) {
-        perror("[-] Failed mmap (from_mapped)\n");
-        close(from_file_index);
-        close(to_file_index);
-        return -1;
-    }
-    
-    // set prot to rw-
-    printf("task_get_vm_map -> vm ptr\n");
-    uint64_t vm_ptr = task_get_vm_map(kfd, getTask(kfd, kfd));
-    uint64_t entry_ptr = vm_map_find_entry(kfd, vm_ptr, (uint64_t)from_mapped);
-    printf("set prot to rw-");
-    vm_map_entry_set_prot(kfd, entry_ptr, PROT_READ | PROT_WRITE, PROT_READ | PROT_WRITE);
-    
-    // WRITE
-//    const char* data = "AAAAAAAAAAAAAAAAAAAAAAA";
-//
-//    size_t data_len = strlen(data);
-//    off_t file_size = lseek(to_file_index, 0, SEEK_END);
-//    if (file_size == -1) {
-//        perror("Failed lseek.");
-//    }
-    
-    char* to_mapped = mmap(NULL, to_file_size, PROT_READ | PROT_WRITE, MAP_SHARED, to_file_index, 0);
-    if (to_mapped == MAP_FAILED) {
-        perror("[-] Failed mmap (to_mapped)");
-        close(from_file_index);
-        close(to_file_index);
-        return -1;
-    }
-    printf(to_mapped);
-    
-    memcpy(to_mapped, from_mapped, from_file_size);
-    printf("done???????");
-    // Cleanup
-//    munmap(to_file_data, to_file_size);
-    munmap(from_mapped, from_file_size);
-    munmap(to_mapped, to_file_size);
-    close(from_file_index);
-    close(to_file_index);
-//    munmap(from_file_data, from_file_size);
-//    close(from_fd);
-
-    // Return success or error code
-    return 0;
-}
-
-int do_fun(uint64_t kfd) {
     _offsets_init();
     
-    uint64_t kslide = get_kslide(kfd);
+    uint64_t kslide = get_kslide();
     uint64_t kbase = 0xfffffff007004000 + kslide;
     printf("[i] Kernel base: 0x%llx\n", kbase);
     printf("[i] Kernel slide: 0x%llx\n", kslide);
-    uint64_t kheader64 = kread64(kfd, kbase);
+    uint64_t kheader64 = kread64(kbase);
     printf("[i] Kernel base kread64 ret: 0x%llx\n", kheader64);
     
     pid_t myPid = getpid();
-    uint64_t selfProc = getProc(kfd, myPid);
+    uint64_t selfProc = getProc(myPid);
     printf("[i] self proc: 0x%llx\n", selfProc);
     
-    funUcred(kfd, selfProc);
-    funProc(kfd, selfProc);
-    //funVnodeHide(kfd, "/System/Library/Audio/UISounds/photoShutter.caf");
-    //funCSFlags(kfd, "launchd");
-    //funTask(kfd, "kfd");
+    funUcred(selfProc);
+    funProc(selfProc);
+    funVnodeHide("/System/Library/Audio/UISounds/photoShutter.caf");
+    funCSFlags("launchd");
+    funTask("kfd");
     
     //Patch
-    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
+    funVnodeChown("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
     //Restore
-    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0, 0);
+    funVnodeChown("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0, 0);
     
     
     //Patch
-    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0107777);
+    funVnodeChmod("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0107777);
     //Restore
-    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
+    funVnodeChmod("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
     
     mach_port_t host_self = mach_host_self();
     printf("[i] mach_host_self: 0x%x\n", host_self);
-    fun_ipc_entry_lookup(kfd, host_self);
+    fun_ipc_entry_lookup(host_self);
     
-    printf("hiding home bar\n");
-    funVnodeHide(kfd, "/System/Library/PrivateFrameworks/MaterialKit.framework/Assets.car");
-    printf("hiding dock background\n");
-    funVnodeHide(kfd, "/System/Library/PrivateFrameworks/CoreMaterial.framework/dockDark.materialrecipe");
-    funVnodeHide(kfd, "/System/Library/PrivateFrameworks/CoreMaterial.framework/dockLight.materialrecipe");
-    printf("hiding lockicons\n");
-    funVnodeHide(kfd, "/System/Library/PrivateFrameworks/CoverSheet.framework/Assets.car");
-    printf("enabling dynamic island\n");
-    funVnodeChown(kfd, "/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist", 501, 501);
-    funVnodeChmod(kfd, "/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist", 0107777);
-    funVnodeOverwrite2(kfd, "/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist", "/private/var/mobile/Library/Mobile Documents/com~apple~CloudDocs/com.apple.MobileGestalt.plist");
+//    funVnodeOverwrite2("/System/Library/Audio/UISounds/photoShutter.caf", [NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"].UTF8String);
     
-    //funVnodeOverwriteFile(kfd, "/System/Library/Audio/UISounds/photoShutter.caf");
-    
+//    funVnodeOverwriteFile("/System/Library/Audio/UISounds/photoShutter.caf", [NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"].UTF8String);
+//
+    grant_full_disk_access(^(NSError* error) {
+        NSLog(@"[-] grant_full_disk_access returned error: %@", error);
+    });
+//    patch_installd();
 
-    
-//    Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var
+        
+//    Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> "/var/mobile/Library/Caches/com.apple.keyboards"
 //    NSString *mntPath = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted"];
 //    [[NSFileManager defaultManager] removeItemAtPath:mntPath error:nil];
 //    [[NSFileManager defaultManager] createDirectoryAtPath:mntPath withIntermediateDirectories:NO attributes:nil error:nil];
-//    funVnodeRedirectFolder(kfd, mntPath.UTF8String, "/private");
+//    funVnodeRedirectFolder(mntPath.UTF8String, "/System/Library"); //<- should NOT be work.
+//    funVnodeRedirectFolder(mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards"); //<- should be work.
 //    NSArray* dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
-//    NSLog(@"/var directory: %@", dirs);
+//    NSLog(@"mntPath directory list: %@", dirs);
     
-    //TODO: Redirect /System/Library/PrivateFrameworks/TCC.framework/Support/ -> NSHomeDirectory(), @"/Documents/mounted"
-    
-    //Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var/mobile
-//    funVnodeResearch(kfd, mntPath.UTF8String, mntPath.UTF8String);
-//    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
-//    NSLog(@"[i] /var/mobile dirs: %@", dirs);
-    
+#if 0
+    Redirect Folders: NSHomeDirectory() + @"/Documents/mounted" -> /var/mobile
+    funVnodeResearch(mntPath.UTF8String, mntPath.UTF8String);
+    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mntPath error:NULL];
+    NSLog(@"[i] /var/mobile dirs: %@", dirs);
     
     
     
-//    funVnodeOverwriteFile(kfd, mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards");
-//    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"] toPath:[NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted/images/BBBB.bin"] error:nil];
     
-//    symlink("/System/Library/PrivateFrameworks/TCC.framework/Support/", [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/Support"].UTF8String);
-//    mount("/System/Library/PrivateFrameworks/TCC.framework/Support/", mntPath, NULL, MS_BIND | MS_REC, NULL);
-//    printf("mount ret: %d\n", mount("apfs", mntpath, 0, &mntargs))
-//    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/", 501, 501);
-//    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/", 0107777);
+    funVnodeOverwriteFile(mntPath.UTF8String, "/var/mobile/Library/Caches/com.apple.keyboards");
+    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/AAAA.bin"] toPath:[NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/mounted/images/BBBB.bin"] error:nil];
     
-//    funVnodeOverwriteFile(kfd, mntPath.UTF8String, "/");
+    symlink("/System/Library/PrivateFrameworks/TCC.framework/Support/", [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/Support"].UTF8String);
+    mount("/System/Library/PrivateFrameworks/TCC.framework/Support/", mntPath, NULL, MS_BIND | MS_REC, NULL);
+    printf("mount ret: %d\n", mount("apfs", mntpath, 0, &mntargs))
+    funVnodeChown("/System/Library/PrivateFrameworks/TCC.framework/Support/", 501, 501);
+    funVnodeChmod("/System/Library/PrivateFrameworks/TCC.framework/Support/", 0107777);
     
-    
-//    for(NSString *dir in dirs) {
-//        NSString *mydir = [mntPath stringByAppendingString:@"/"];
-//        mydir = [mydir stringByAppendingString:dir];
-//        int fd_open = open(mydir.UTF8String, O_RDONLY);
-//        printf("open %s, ret: %d\n", mydir.UTF8String, fd_open);
-//        if(fd_open != -1) {
-//            NSArray* dirs2 = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mydir error:NULL];
-//            NSLog(@"/var/%@ directory: %@", dir, dirs2);
-//        }
-//        close(fd_open);
-//    }
-//    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library"].UTF8String, O_RDONLY));
-//    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/containers"].UTF8String, O_RDONLY));
-//    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library/Preferences"].UTF8String, O_RDONLY));
-//    printf("open ret: %d\n", open("/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches", O_RDONLY));
-    
-//    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:[mntPath stringByAppendingString:@"/mobile"] error:NULL];
-//    NSLog(@"/var/mobile directory: %@", dirs);
-    
-//    [@"Hello, this is an example file!" writeToFile:[mntPath stringByAppendingString:@"/Hello.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
-//    funVnodeOverwriteFile(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", AAAApath.UTF8String);
-//    funVnodeChown(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
-//    funVnodeOverwriteFile(kfd, AAAApath.UTF8String, BBBBpath.UTF8String);
-//    funVnodeOverwriteFile(kfd, "/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", "/System/Library/AppPlaceholders/Tips.app/AppIcon60x60@2x.png");
-    
-//    xpc_crasher("com.apple.tccd");
-//    xpc_crasher("com.apple.tccd");
-//    sleep(10);
-//    funUcred(kfd, getProc(kfd, getPidByName(kfd, "tccd")));
-//    funProc(kfd, getProc(kfd, getPidByName(kfd, "tccd")));
-//    funVnodeChmod(kfd, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
+    funVnodeOverwriteFile(mntPath.UTF8String, "/");
     
     
-//    funVnodeOverwrite(kfd, AAAApath.UTF8String, AAAApath.UTF8String);
+    for(NSString *dir in dirs) {
+        NSString *mydir = [mntPath stringByAppendingString:@"/"];
+        mydir = [mydir stringByAppendingString:dir];
+        int fd_open = open(mydir.UTF8String, O_RDONLY);
+        printf("open %s, ret: %d\n", mydir.UTF8String, fd_open);
+        if(fd_open != -1) {
+            NSArray* dirs2 = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:mydir error:NULL];
+            NSLog(@"/var/%@ directory: %@", dir, dirs2);
+        }
+        close(fd_open);
+    }
+    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library"].UTF8String, O_RDONLY));
+    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/containers"].UTF8String, O_RDONLY));
+    printf("open ret: %d\n", open([mntPath stringByAppendingString:@"/mobile/Library/Preferences"].UTF8String, O_RDONLY));
+    printf("open ret: %d\n", open("/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches", O_RDONLY));
     
-//    funVnodeOverwrite(kfd, selfProc, "/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", copyToAppDocs.UTF8String);
+    dirs = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:[mntPath stringByAppendingString:@"/mobile"] error:NULL];
+    NSLog(@"/var/mobile directory: %@", dirs);
+    
+    [@"Hello, this is an example file!" writeToFile:[mntPath stringByAppendingString:@"/Hello.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    funVnodeOverwriteFile("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", AAAApath.UTF8String);
+    funVnodeChown("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 501, 501);
+    funVnodeOverwriteFile(AAAApath.UTF8String, BBBBpath.UTF8String);
+    funVnodeOverwriteFile("/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", "/System/Library/AppPlaceholders/Tips.app/AppIcon60x60@2x.png");
+    
+    xpc_crasher("com.apple.tccd");
+    xpc_crasher("com.apple.tccd");
+    sleep(10);
+    funUcred(getProc(getPidByName("tccd")));
+    funProc(getProc(getPidByName("tccd")));
+    funVnodeChmod("/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", 0100755);
+    
+    
+    funVnodeOverwrite(AAAApath.UTF8String, AAAApath.UTF8String);
+    
+    funVnodeOverwrite(selfProc, "/System/Library/AppPlaceholders/Stocks.app/AppIcon60x60@2x.png", copyToAppDocs.UTF8String);
 
 
-//Overwrite tccd:
-//    NSString *copyToAppDocs = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/tccd_patched.bin"];
-//    remove(copyToAppDocs.UTF8String);
-//    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/tccd_patched.bin"] toPath:copyToAppDocs error:nil];
-//    chmod(copyToAppDocs.UTF8String, 0755);
-//    funVnodeOverwrite(kfd, selfProc, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", [copyToAppDocs UTF8String]);
+Overwrite tccd:
+    NSString *copyToAppDocs = [NSString stringWithFormat:@"%@%@", NSHomeDirectory(), @"/Documents/tccd_patched.bin"];
+    remove(copyToAppDocs.UTF8String);
+    [[NSFileManager defaultManager] copyItemAtPath:[NSString stringWithFormat:@"%@%@", NSBundle.mainBundle.bundlePath, @"/tccd_patched.bin"] toPath:copyToAppDocs error:nil];
+    chmod(copyToAppDocs.UTF8String, 0755);
+    funVnodeOverwrite(selfProc, "/System/Library/PrivateFrameworks/TCC.framework/Support/tccd", [copyToAppDocs UTF8String]);
     
-//    xpc_crasher("com.apple.tccd");
-//    xpc_crasher("com.apple.tccd");
-
+    xpc_crasher("com.apple.tccd");
+    xpc_crasher("com.apple.tccd");
+#endif
     
     return 0;
 }

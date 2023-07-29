@@ -32,7 +32,7 @@ struct ContentView: View {
                         Button("Open Kernel") {
                                 puafPages = puafPagesOptions[puafPagesIndex]
                                 kfd = do_kopen(UInt64(puafPages), UInt64(puafMethod), UInt64(kreadMethod), UInt64(kwriteMethod))
-                                do_fun(kfd)
+                                do_fun()
                             }.disabled(kfd != 0)
                             .frame(minWidth: 0, maxWidth: .infinity)
                             .foregroundColor(kfd == 0 ? .purple : .purple.opacity(0.5))
