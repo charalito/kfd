@@ -1,5 +1,7 @@
 # kfd
 
+- Warning: This is my testing branch if you want somthing usable try the hidedock_hidehomebar branch (and the arm64 branch is even worse then this one)
+
 kfd, short for kernel file descriptor, is a project to read and write kernel memory on Apple
 devices. It leverages various vulnerabilities that can be exploited to obtain dangling PTEs, which
 will be referred to as a PUAF primitive, short for "physical use-after-free". Then, it reallocates
